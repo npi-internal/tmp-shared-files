@@ -1,0 +1,23 @@
+{
+  "name": "tmp-shared-files",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "gh:npi-internal/tmp-shared-files"
+  },
+  "bin": {
+    "npi-nvi-nei-storage-test": "storage-test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "tar": "^6.2.1"
+  }
+}

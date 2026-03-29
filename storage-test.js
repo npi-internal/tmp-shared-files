@@ -111,7 +111,6 @@ async function benchmark() {
     const runDir = path.join(TEMP_DIR, `run-${i}`);
     const authorityDir = path.join(runDir, 'temp-build');
     const recoveryDir = path.join(runDir, 'temp-recovery');
-    const builtTar = path.join(runDir, 'original-built.tar.gz');
 
     ensureDir(runDir);
     ensureDir(authorityDir);
@@ -145,11 +144,14 @@ async function benchmark() {
 
   // Performance report
   console.log('\nPerformance Summary:');
+  let totalTime = 0;
   for (const [step, durations] of Object.entries(times)) {
     const total = durations.reduce((acc, d) => acc + d, 0);
     const avg = total / durations.length;
-    console.log(`${step}: Avg ${(avg / 1000).toFixed(2)} s  (Total ${(total / 1000).toFixed(2)} s)`);
+    totalTime += avg;
+    console.log(`${step}: Avg ${(avg / 1000).toFixed(2)} s`);
   }
+  console.log(`Average total time: ${(totalTime / 1000).toFixed(2)} s`);
 }
 
 benchmark().catch((err) => {

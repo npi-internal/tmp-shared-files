@@ -19,6 +19,7 @@ if (process.argv.length < 4) failedToStartError()
 // Local temp directory for the test
 const TEMP_DIR = path.join(process.argv[2], 'temp-' + Date.now());
 const numberOfRuns = Number(process.argv[3])
+const CACHE_DIR = process.argv[4]
 
 if (isNaN(numberOfRuns)) {
   failedToStartError();
@@ -33,6 +34,7 @@ function ensureDir(dir) {
 
 // Utility function: Measure and log the runtime of a step
 async function measure(name, fn) {
+  console.log(`Starting ${name}...`);
   const start = performance.now();
   await fn();
   const end = performance.now();
@@ -79,8 +81,14 @@ async function tarDir(src, dest) {
 }
 
 // Run commands in Docker
-function runDockerCommand(directory, command) {
-  const dockerCmd = `docker run --rm -v ${directory}/project:/app -w /app node:current-buster ${command}`;
+function runDockerCommand(directory, command, additionalMounts = {}) {
+  const mounts = Object.assign({}, additionalMounts, {
+    [`${directory}/project`]: { bind: '/app', mode: 'rw' }
+  });
+
+  const mountString = Object.entries(mounts).map(([src, dest]) => `-v ${src}:${dest.bind}:${dest.mode || 'r'}`).join(' ');
+
+  const dockerCmd = `docker run --rm ${mountString} -w /app node:current-buster ${command}`;
   execSync(dockerCmd, { stdio: process.env.SHOW_STDIO === 'true' ? 'inherit' : 'ignore' });
 }
 
@@ -91,7 +99,6 @@ async function benchmark() {
     extract: [],
     npmInstall: [],
     npmRunBuild: [],
-    copyBuilt: [],
   };
 
   ensureDir(TEMP_DIR);
@@ -121,8 +128,12 @@ async function benchmark() {
     );
 
     // Step 3: Run `npm install` in Docker
+    const mounts = {};
+    if (CACHE_DIR) {
+      mounts[CACHE_DIR] = { bind: '/root/.npm', mode: 'rw' };
+    }
     times.npmInstall.push(
-      await measure('NPM install', async () => runDockerCommand(authorityDir, 'npm install'))
+      await measure('NPM install', async () => runDockerCommand(authorityDir, 'npm ci --prefer-offline', mounts))
     );
 
     // Step 4: Run `npm run build` in Docker
@@ -130,15 +141,6 @@ async function benchmark() {
       await measure('NPM run build', async () => runDockerCommand(authorityDir, 'npx nowprototypeit build'))
     );
 
-    // Step 5: Copy to `original-built`
-    times.copyBuilt.push(
-      await measure('Copy built files', async () => tarDir(authorityDir, builtTar))
-    );
-
-    // Step 5: Copy to `original-built`
-    times.copyBuilt.push(
-      await measure('Recover built files', async () => extractTarball(builtTar, recoveryDir))
-    );
   }
 
   // Performance report
@@ -156,5 +158,5 @@ benchmark().catch((err) => {
 
 
 function failedToStartError() {
-  throw new Error('Parameters required <output-directory> <number-of-runs>')
+  throw new Error('Parameters required <output-directory> <number-of-runs> [cache-directory]')
 }

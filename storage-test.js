@@ -17,9 +17,10 @@ const TAR_GZ_URL = 'https://raw.githubusercontent.com/npi-internal/tmp-shared-fi
 if (process.argv.length < 4) failedToStartError()
 
 // Local temp directory for the test
-const TEMP_DIR = path.join(process.argv[2], 'temp-' + Date.now());
-const numberOfRuns = Number(process.argv[3])
-const CACHE_DIR = process.argv[4]
+const LONG_TERM_DIR = path.join(process.argv[2], 'temp-' + Date.now());
+const SHORT_TERM_DIR = path.join(process.argv[3], 'temp-' + Date.now());
+const numberOfRuns = Number(process.argv[4])
+const CACHE_DIR = process.argv[5]
 
 if (isNaN(numberOfRuns)) {
   failedToStartError();
@@ -71,13 +72,25 @@ async function extractTarball(tarballPath, outputDir) {
   console.log(fs.readdirSync(path.join(outputDir, 'project')));
 }
 
-// Copy directory
-async function tarDir(src, dest) {
-  await tar.c({
-    gzip: true,
-    file: dest,
-    cwd: src,
-  }, ['.']);
+async function tarDir(dir, outputPath) {
+  return new Promise((resolve, reject) => {
+    tar.c(
+      {
+        gzip: true,
+        file: outputPath,
+        cwd: dir
+      },
+      ['.'],
+      (err) => {
+        if (err) {
+          console.error('Error creating tarball:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      }
+    )
+  });
 }
 
 // Run commands in Docker
@@ -93,37 +106,41 @@ function runDockerCommand(directory, command, additionalMounts = {}) {
 }
 
 async function benchmark() {
-  const tarballPath = path.join(TEMP_DIR, 'project.tar.gz');
+  const originalUploadPath = path.join(LONG_TERM_DIR, 'project.tar.gz');
+  const builtTarPath = path.join(LONG_TERM_DIR, 'built.tar.gz');
+
   const times = {
     download: [],
     extract: [],
     npmInstall: [],
     npmRunBuild: [],
+    saveNewAuthority: [],
+    extractAuthority: []
   };
 
-  ensureDir(TEMP_DIR);
+  ensureDir(LONG_TERM_DIR);
+  ensureDir(SHORT_TERM_DIR);
 
   console.log('Starting benchmark...');
 
   for (let i = 0; i < numberOfRuns; i++) {
     console.log(`Run #${i + 1}`);
 
-    const runDir = path.join(TEMP_DIR, `run-${i}`);
-    const authorityDir = path.join(runDir, 'temp-build');
-    const recoveryDir = path.join(runDir, 'temp-recovery');
+    const longTermRunDir = path.join(LONG_TERM_DIR, `run-${i}`);
+    const shortTermRunDir = path.join(SHORT_TERM_DIR, `run-${i}`);
+    const buildDir = path.join(shortTermRunDir, 'temp-build');
 
-    ensureDir(runDir);
-    ensureDir(authorityDir);
-    ensureDir(recoveryDir);
+    ensureDir(longTermRunDir);
+    ensureDir(buildDir);
 
     // Step 1: Download the file
     times.download.push(
-      await measure('Download tarball', async () => downloadTarball(tarballPath))
+      await measure('Download tarball', async () => downloadTarball(originalUploadPath))
     );
 
     // Step 2: Extract the tarball
     times.extract.push(
-      await measure('Extract tarball', async () => extractTarball(tarballPath, authorityDir))
+      await measure('Extract tarball', async () => extractTarball(originalUploadPath, buildDir))
     );
 
     // Step 3: Run `npm install` in Docker
@@ -132,13 +149,24 @@ async function benchmark() {
       mounts[CACHE_DIR] = { bind: '/root/.npm', mode: 'rw' };
     }
     times.npmInstall.push(
-      await measure('NPM install', async () => runDockerCommand(authorityDir, 'npm ci --prefer-offline', mounts))
+      await measure('NPM install', async () => runDockerCommand(buildDir, 'npm ci --prefer-offline', mounts))
     );
 
     // Step 4: Run `npm run build` in Docker
     times.npmRunBuild.push(
-      await measure('NPM run build', async () => runDockerCommand(authorityDir, 'npx nowprototypeit build'))
+      await measure('NPI build', async () => runDockerCommand(buildDir, 'npx nowprototypeit build'))
     );
+
+    times.saveNewAuthority.push(
+      await measure('Save new authority', async () => tarDir(buildDir, builtTarPath))
+    )
+
+    const authorityUnpackedDir = path.join(shortTermRunDir, 'authority-unpacked');
+    ensureDir(authorityUnpackedDir);
+
+    times.extractAuthority.push(
+      await measure('Extract authority', async () => extractTarball(builtTarPath, authorityUnpackedDir))
+    )
 
   }
 

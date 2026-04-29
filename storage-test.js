@@ -102,6 +102,9 @@ function runDockerCommand(directory, command, additionalMounts = {}) {
   const mountString = Object.entries(mounts).map(([src, dest]) => `-v ${src}:${dest.bind}:${dest.mode || 'r'}`).join(' ');
 
   const dockerCmd = `docker run --rm ${mountString} -w /app node:current-buster ${command}`;
+
+  console.log(`Running command: ${dockerCmd}`);
+
   execSync(dockerCmd, { stdio: process.env.SHOW_STDIO === 'true' ? 'inherit' : 'ignore' });
 }
 

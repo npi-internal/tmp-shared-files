@@ -14,6 +14,8 @@ import { pipeline } from 'stream/promises';
 // Replace with your URL to host the tarball
 const TAR_GZ_URL = 'https://raw.githubusercontent.com/npi-internal/tmp-shared-files/e34195d32df254b8dc93886ba8efd61edba1a242/example-001.tar.gz';
 
+console.log('url', TAR_GZ_URL);
+
 if (process.argv.length < 4) failedToStartError()
 
 // Local temp directory for the test
